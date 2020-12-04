@@ -1,11 +1,13 @@
 import json
 import pathlib
 from typing import Dict, List, NamedTuple
+from zipfile import ZipFile
 
 import matplotlib.pyplot as plt
 import networkx as nx
 from pymatgen.analysis.local_env import CrystalNN
 from pymatgen.core.structure import Structure
+from tqdm import tqdm
 
 ROOT_FOLDER_PATH: pathlib.Path = pathlib.Path(__file__).parent
 RAW_DATA_FOLDER_PATH: pathlib.Path = pathlib.Path(ROOT_FOLDER_PATH, 'raw_data')
@@ -105,7 +107,7 @@ def save_graph(graph: nx.Graph, path: pathlib.Path) -> None:
         nx.write_gpickle(graph, file)
 
 
-def load_graph(path: pathlib.Path) -> None:
+def load_graph(path: pathlib.Path) -> nx.Graph:
     """
     Read the file into a graph
     :param path: The path to read from.
@@ -128,18 +130,23 @@ def draw_graph(graph: nx.Graph) -> None:
 
 def main():
     atom_embeddings = get_atom_embeddings(ATOM_EMBEDDING_FILE_PATH)
-    for file_path in RAW_DATA_FOLDER_PATH.iterdir():
-        if file_path.name.endswith('.cif'):
-            save_file_name = pathlib.Path(NX_DATA_FOLDER_PATH,
-                                          PICKLE_FILE_NAME_TEMPLATE.format(mpid=file_path.stem))
-            # graph = read_graph(save_file_name)
-            crystal = Structure.from_file(str(file_path))
-            # This will not warn if there are not enough neighbors
-            neighbors = get_neighbors_cgcnn(crystal, RADIUS, MAX_NUM_NEIGHBORS)
-            graph = create_graph(crystal, atom_embeddings, neighbors)
-            # draw_graph(graph)
-            save_graph(graph, pathlib.Path(NX_DATA_FOLDER_PATH,
-                                           PICKLE_FILE_NAME_TEMPLATE.format(mpid=file_path.stem)))
+    with ZipFile(pathlib.Path(RAW_DATA_FOLDER_PATH, 'cifs.zip'), 'r') as read_zip:
+        with ZipFile(pathlib.Path(NX_DATA_FOLDER_PATH, 'graphs.zip'), 'w') as write_zip:
+            print("Creating an nx graph from each cif. This will take a long time.")
+            print("The process will be done when the tdqm bar finishes.")
+            for file_name in tqdm(read_zip.namelist()):
+                with read_zip.open(file_name, 'r') as file:
+                    pickle_file_name = PICKLE_FILE_NAME_TEMPLATE.format(
+                        mpid=file_name.split('.')[0])
+                    temp_save_file_path = pathlib.Path(NX_DATA_FOLDER_PATH, pickle_file_name)
+                    # graph = read_graph(save_file_name)
+                    crystal = Structure.from_str(file.read().decode("utf-8"), fmt='cif')
+                    # This will not warn if there are not enough neighbors
+                    neighbors = get_neighbors_crystalnn(crystal)
+                    graph = create_graph(crystal, atom_embeddings, neighbors)
+                    save_graph(graph, temp_save_file_path)
+                    write_zip.write(temp_save_file_path, pickle_file_name)
+                    temp_save_file_path.unlink()
 
 
 if __name__ == '__main__':
