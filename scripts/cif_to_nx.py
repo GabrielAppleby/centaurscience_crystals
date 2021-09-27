@@ -1,19 +1,18 @@
 import json
 import pathlib
 from typing import Dict, List, NamedTuple
-from zipfile import ZipFile
 
 import matplotlib.pyplot as plt
 import networkx as nx
+from joblib import Parallel, delayed
 from pymatgen.analysis.local_env import CrystalNN
 from pymatgen.core.structure import Structure
 from tqdm import tqdm
 
 ROOT_FOLDER_PATH: pathlib.Path = pathlib.Path(__file__).parent
 RAW_DATA_FOLDER_PATH: pathlib.Path = pathlib.Path(ROOT_FOLDER_PATH, 'raw_data')
-ATOM_EMBEDDING_FILE_PATH: pathlib.Path = pathlib.Path(RAW_DATA_FOLDER_PATH, 'atom_init.json')
+CIFS_FOLDER_PATH: pathlib.Path = pathlib.Path(RAW_DATA_FOLDER_PATH, 'cifs')
 NX_DATA_FOLDER_PATH: pathlib.Path = pathlib.Path(ROOT_FOLDER_PATH, 'nx_data')
-
 PICKLE_FILE_NAME_TEMPLATE: str = '{mpid}.pkl'
 
 RADIUS = 8
@@ -77,18 +76,16 @@ def get_neighbors_crystalnn(crystal: Structure) -> List[List[Neighbor]]:
 
 
 def create_graph(crystal: Structure,
-                 atom_embeddings: Dict[int, List[int]],
                  neighbors_by_atom: List[List[Neighbor]]):
     """
     Create a networkx graph.
     :param crystal: The structure being converted into a graph.
-    :param atom_embeddings: The embeddings for each atom.
     :param neighbors_by_atom: The closest neighbors of each atom.
     :return: The networkx graph.
     """
     graph = nx.Graph()
     for idx, site in enumerate(crystal.sites):
-        graph.add_nodes_from([(idx, {'embedding': atom_embeddings[site.specie.number],
+        graph.add_nodes_from([(idx, {'atomic_group': site.specie.group,
                                      'label': site.specie.number})])
         for neighbor in neighbors_by_atom[idx]:
             if not graph.has_edge(idx, neighbor.index) and not graph.has_edge(neighbor.index, idx):
@@ -128,25 +125,29 @@ def draw_graph(graph: nx.Graph) -> None:
     plt.clf()
 
 
+def convert_cif_to_nx(file_path: pathlib.Path) -> None:
+    """
+    Convert a single cif to a networkx graph and write it to file.
+    :param file_path: The file path of the cif.
+    :return: None.
+    """
+    with open(file_path, 'r') as file:
+        pickle_file_name = PICKLE_FILE_NAME_TEMPLATE.format(
+            mpid=file_path.name.split('.')[0])
+        crystal = Structure.from_str(file.read(), fmt='cif')
+        # This will not warn if there are not enough neighbors
+        neighbors = get_neighbors_crystalnn(crystal)
+        graph = create_graph(crystal, neighbors)
+        save_graph(graph, pathlib.Path(NX_DATA_FOLDER_PATH, pickle_file_name))
+
+
 def main():
-    atom_embeddings = get_atom_embeddings(ATOM_EMBEDDING_FILE_PATH)
-    with ZipFile(pathlib.Path(RAW_DATA_FOLDER_PATH, 'cifs.zip'), 'r') as read_zip:
-        with ZipFile(pathlib.Path(NX_DATA_FOLDER_PATH, 'graphs.zip'), 'w') as write_zip:
-            print("Creating an nx graph from each cif. This will take a long time.")
-            print("The process will be done when the tdqm bar finishes.")
-            for file_name in tqdm(read_zip.namelist()):
-                with read_zip.open(file_name, 'r') as file:
-                    pickle_file_name = PICKLE_FILE_NAME_TEMPLATE.format(
-                        mpid=file_name.split('.')[0])
-                    temp_save_file_path = pathlib.Path(NX_DATA_FOLDER_PATH, pickle_file_name)
-                    # graph = read_graph(save_file_name)
-                    crystal = Structure.from_str(file.read().decode("utf-8"), fmt='cif')
-                    # This will not warn if there are not enough neighbors
-                    neighbors = get_neighbors_crystalnn(crystal)
-                    graph = create_graph(crystal, atom_embeddings, neighbors)
-                    save_graph(graph, temp_save_file_path)
-                    write_zip.write(temp_save_file_path, pickle_file_name)
-                    temp_save_file_path.unlink()
+    cifs = list(CIFS_FOLDER_PATH.glob('*.cif'))
+    print("Creating an nx graph from each cif. This will take a long time.")
+    print("The process will be done when the tdqm bar finishes.")
+    Parallel(n_jobs=-1)(
+        delayed(convert_cif_to_nx)(file_name) for file_name in
+        tqdm(cifs))
 
 
 if __name__ == '__main__':
