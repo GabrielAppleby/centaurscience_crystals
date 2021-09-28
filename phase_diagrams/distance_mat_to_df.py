@@ -1,11 +1,13 @@
 from pathlib import Path
 from typing import NamedTuple, List, Tuple, Iterable
 
+import hdbscan
 import numpy as np
 import pandas as pd
 import umap
 import umap.plot
 from joblib import Parallel, delayed
+from sklearn.cluster import DBSCAN
 from tqdm import tqdm
 
 RANDOM_SEED: int = 42
@@ -48,14 +50,15 @@ def project_single(distances: np.ndarray, n: int) -> Tuple[np.ndarray, str]:
     return projection, str(n)
 
 
-def project_embeddings(distance_mat: PhaseDistances) -> pd.DataFrame:
+def project_distance_mat(distance_mat: PhaseDistances) -> pd.DataFrame:
     """
-    Plot the embeddings using umap in a variety of ways. Currently only exploring relevant metrics
-    and a small number of nearest neighbor variations.
-    :param embedding_df: The embeddings to plot, as well as the names of the methods used.
-    :return: The dataframe of embeddings, structure info, and projections.
+    Plot the phase diagram distances using umap in a variety of ways. Currently only exploring
+    relevant metrics and a small number of nearest neighbor variations.
+    :param distance_mat: The phase diagram distances to plot, as well as the names of the methods
+    used.
+    :return: The dataframe of structure info, and projections.
     """
-    print("Projecting each embedding with a variety of settings.")
+    print("Projecting with a variety of settings.")
     neighbors = list(range(2, 20))
     df = pd.DataFrame({'name': distance_mat.names, 'atomic_group': distance_mat.atomic_group})
     projections: Iterable[Tuple[np.ndarray, str]] = Parallel(n_jobs=4)(
@@ -66,9 +69,26 @@ def project_embeddings(distance_mat: PhaseDistances) -> pd.DataFrame:
     return df
 
 
+def cluster_distance_mat(distance_mat: PhaseDistances) -> pd.DataFrame:
+    """
+    Cluster the phase diagram distances using a variety of clustering algs.
+    :param distance_mat: The phase diagram distances to cluster.
+    :return: The dataframe of cluster labels.
+    """
+    clustering_methods = [('dbscan', DBSCAN(metric='precomputed')),
+                          ('hdbscan', hdbscan.HDBSCAN(metric='precomputed'))]
+    df = pd.DataFrame()
+    print("Clustering")
+    for method_name, method in tqdm(clustering_methods):
+        df[method_name] = method.fit_predict(distance_mat.mat)
+    return df
+
+
 def main():
-    sim_mat = load_distances()
-    df = project_embeddings(sim_mat)
+    dist_mat = load_distances()
+    projection_df = project_distance_mat(dist_mat)
+    cluster_df = cluster_distance_mat(dist_mat)
+    df = pd.concat([projection_df, cluster_df], axis=1)
     df.to_csv(Path(ROOT_FOLDER_PATH, 'crystal_phase_projections.csv'), index=False)
 
 
