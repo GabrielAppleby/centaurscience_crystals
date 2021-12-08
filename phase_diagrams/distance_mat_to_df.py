@@ -7,7 +7,6 @@ import pandas as pd
 import umap
 import umap.plot
 from joblib import Parallel, delayed
-from sklearn.cluster import DBSCAN
 from tqdm import tqdm
 
 RANDOM_SEED: int = 42
@@ -75,12 +74,10 @@ def cluster_distance_mat(distance_mat: PhaseDistances) -> pd.DataFrame:
     :param distance_mat: The phase diagram distances to cluster.
     :return: The dataframe of cluster labels.
     """
-    clustering_methods = [('dbscan', DBSCAN(metric='precomputed')),
-                          ('hdbscan', hdbscan.HDBSCAN(metric='precomputed'))]
     df = pd.DataFrame()
     print("Clustering")
-    for method_name, method in tqdm(clustering_methods):
-        df[method_name] = method.fit_predict(distance_mat.mat)
+    df['hdbscan'] = hdbscan.HDBSCAN(
+        metric='precomputed', min_cluster_size=15).fit_predict(distance_mat.mat)
     return df
 
 

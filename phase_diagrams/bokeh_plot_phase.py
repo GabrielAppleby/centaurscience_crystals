@@ -7,7 +7,7 @@ from bokeh.plotting import figure, DEFAULT_TOOLS, Figure
 from bokeh.transform import factor_cmap, linear_cmap
 
 NEIGHBORS = list(range(2, 20))
-COLORING = ['atomic_group', 'dbscan', 'hdbscan']
+COLORING = ['atomic_group', 'hdbscan']
 
 X_AXIS_TEMPLATE: str = '{}_x'
 Y_AXIS_TEMPLATE: str = '{}_y'
@@ -17,32 +17,29 @@ HOVER_TOOLTIP_FORMAT: str = """
             <hr>
               <p>Name: @name</p>
               <p>Atomic Group: @atomic_group</p>
-              <p>DB Cluster: @dbscan</p>
               <p>HDB Cluster: @hdbscan</p>
             <hr>
           </div>
         """
 
 df: pd.DataFrame = pd.read_csv('crystal_phase_projections.csv', index_col=False,
-                               dtype={'atomic_group': str, 'dbscan': str})
+                               dtype={'atomic_group': str, 'hdbscan': str})
 df = df.sort_values('atomic_group')
 
 neighbor_slider: Slider = Slider(title="N_Neighbors", start=NEIGHBORS[0], end=NEIGHBORS[-1],
                                  value=NEIGHBORS[0], step=1)
-color_select: Select = Select(title="Color", value='hdbscan', options=COLORING)
+color_select: Select = Select(title="Color", value='atomic_group', options=COLORING)
 
 source: ColumnDataSource = ColumnDataSource(data=dict(x=[],
                                                       y=[],
                                                       name=[],
                                                       label=[],
                                                       atomic_group=[],
-                                                      dbscan=[],
                                                       hdbscan=[]))
 
-mapper = linear_cmap(field_name='label',
-                     palette=Viridis256,
-                     low=min(df['hdbscan']),
-                     high=max(df['hdbscan']))
+mapper = factor_cmap(field_name='label',
+                     palette=Category10[4],
+                     factors=sorted(df['atomic_group'].unique()))
 
 p: Figure = figure(tools=[DEFAULT_TOOLS] + [HoverTool(tooltips=HOVER_TOOLTIP_FORMAT)],
                    sizing_mode='stretch_both',
@@ -57,34 +54,19 @@ scatter: GlyphRenderer = p.scatter('x',
                                    legend='label',
                                    source=source)
 
-color_bar = ColorBar(color_mapper=mapper['transform'], width=8, location=(0, 0))
-p.add_layout(color_bar, 'right')
-
 
 def update():
     neighbor = neighbor_slider.value
     color = color_select.value
 
-    if color == 'hdbscan':
-        p.legend.visible = False
-        low = min(df['hdbscan'])
-        high = max(df['hdbscan'])
-        test = linear_cmap(field_name='label',
-                           palette=Viridis256,
-                           low=low,
-                           high=high)
-        mapper['transform'].low = low
-        mapper['transform'].high = high
-    elif color == 'atomic_group':
-        color_bar.visible = False
+    if color == 'atomic_group':
         test = factor_cmap(field_name='label',
                            palette=Category10[4],
                            factors=sorted(df['atomic_group'].unique()))
     else:
-        color_bar.visible = False
         test = factor_cmap(field_name='label',
-                           palette=Category20[17],
-                           factors=sorted(df['dbscan'].unique()))
+                           palette=Category20[20],
+                           factors=sorted(df['hdbscan'].unique()))
 
     scatter.glyph.fill_color = test
     source.data = dict(
@@ -93,14 +75,8 @@ def update():
         name=df['name'],
         label=df[color],
         atomic_group=df['atomic_group'],
-        dbscan=df['dbscan'],
         hdbscan=df['hdbscan']
     )
-
-    if color == 'hdbscan':
-        color_bar.visible = True
-    else:
-        p.legend.visible = True
 
 
 controls = [neighbor_slider, color_select]

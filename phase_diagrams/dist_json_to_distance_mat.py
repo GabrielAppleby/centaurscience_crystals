@@ -6,18 +6,18 @@ import numpy as np
 import pymatgen.core as mg
 
 ROOT_FOLDER_PATH: Path = Path(__file__).parent
-SIMILARITY_JSON_FILE_PATH: Path = Path(ROOT_FOLDER_PATH, 'binary_similarities_with_sg.json')
+DISTANCE_JSON_FILE_PATH: Path = Path(ROOT_FOLDER_PATH, 'binary_distances.json')
 DISTANCE_MAT_FILE_PATH: Path = Path(ROOT_FOLDER_PATH, 'binary_distances.npz')
 IMPORTANT_GROUPS: List[int] = [15, 16, 17]
 
 
-def get_similarity_dict(sim_dict_file_path: Path) -> Dict[str, Dict[str, int]]:
+def get_dist_dict(dist_dict_file_path: Path) -> Dict[str, Dict[str, int]]:
     """
-    Gets the similarity dictionary.
-    :param sim_dict_file_path: The path to the similarity dictionary file.
-    :return: The similarity dictionary.
+    Gets the distance dictionary.
+    :param dist_dict_file_path: The path to the distance dictionary file.
+    :return: The distance dictionary.
     """
-    with open(sim_dict_file_path, 'r') as file:
+    with open(dist_dict_file_path, 'r') as file:
         return json.load(file)
 
 
@@ -36,24 +36,24 @@ def get_group(formula: str):
 
 
 def main():
-    sim_dict = get_similarity_dict(SIMILARITY_JSON_FILE_PATH)
-    num_entries = len(sim_dict)
-    sim_matrix = np.zeros((num_entries, num_entries))
-    entity_names = [key for key in sorted(sim_dict.keys())]
-    highest_groups = [get_group(key) for key in sorted(sim_dict.keys())]
+    dist_dict = get_dist_dict(DISTANCE_JSON_FILE_PATH)
+    num_entries = len(dist_dict)
+    dist_matrix = np.zeros((num_entries, num_entries))
+    entity_names = [key for key in sorted(dist_dict.keys())]
+    highest_groups = [get_group(key) for key in sorted(dist_dict.keys())]
 
     for row_index, row_name in enumerate(entity_names):
         for col_index, col_name in enumerate(entity_names):
             if row_index != col_index:
-                sim = 0.0
+                dist = 0.0
                 try:
-                    sim = 1 - sim_dict[row_name][col_name]
+                    dist = dist_dict[row_name][col_name]
                 except KeyError:
-                    sim = 1 - sim_dict[col_name][row_name]
+                    dist = dist_dict[col_name][row_name]
                 finally:
-                    sim_matrix[row_index][col_index] = sim
+                    dist_matrix[row_index][col_index] = dist
     np.savez(DISTANCE_MAT_FILE_PATH,
-             mat=sim_matrix,
+             mat=dist_matrix,
              names=entity_names,
              highest_groups=highest_groups)
 
