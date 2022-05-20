@@ -10,6 +10,7 @@ import pandas as pd
 import umap
 import umap.plot
 from joblib import Parallel, delayed
+from sklearn.cluster import DBSCAN
 from tqdm import tqdm
 
 RANDOM_SEED: int = 42
@@ -131,6 +132,30 @@ def project_embeddings(embedding_df: EmbeddingDF) -> pd.DataFrame:
     for projection, name in projections:
         df[name + '_x'] = projection[:, 0]
         df[name + '_y'] = projection[:, 1]
+    return df
+
+
+def cluster_single(embedding: np.ndarray, name: str, metric: str, eps: float):
+    return DBSCAN(metric=metric, eps=eps, n_jobs=2).fit_predict(embedding), name + '_{}'.format(metric)
+
+
+def cluster(embedding_df: EmbeddingDF) -> pd.DataFrame:
+    """
+    Cluster the phase diagram distances using a variety of clustering algs.
+    :param distance_mat: The phase diagram distances to cluster.
+    :return: The dataframe of cluster labels.
+    """
+    # distance_metrics = ['euclidean', 'cosine']
+    distance_metrics = ['euclidean']
+    df = pd.DataFrame()
+    eps = {'gl2vec_degree': {'euclidean': 3.2, 'cosine': .26}, 'g2vec_atomic_group': {'euclidean': .9, 'cosine': .13}, 'g2vec_atomic_number': {'euclidean': 1.0, 'cosine': .23}, 'g2vec_degree': {'euclidean': 1.2, 'cosine': .15}, 'fgsd_degree': {'euclidean': 100.0, 'cosine': .47}}
+    params = list(product(embedding_df.embedding_names, distance_metrics))
+    clusterings: Iterable[Tuple[np.ndarray, str]] = Parallel(n_jobs=4)(
+        delayed(cluster_single)(np.vstack(embedding_df.df[name].values.tolist()), name, metric, eps[name][metric]) for
+        name, metric in tqdm(params))
+
+    for clustering, name in clusterings:
+        df[name + '_cluster'] = clustering
     return df
 
 

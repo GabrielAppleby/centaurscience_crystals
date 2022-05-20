@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import List
 
 import pandas as pd
@@ -18,7 +19,7 @@ EMBEDDINGS = ['g2vec_degree',
               'fgsd_degree',
               'gl2vec_degree']
 
-COLORING = ['formation_energy', 'space_group', 'most_prevalent_atomic_group']
+COLORING = ['formation_energy', 'space_group', 'gl2vec_degree_euclidean_cluster','gl2vec_degree_cosine_cluster','g2vec_atomic_group_euclidean_cluster','g2vec_atomic_group_cosine_cluster','g2vec_atomic_number_euclidean_cluster','g2vec_atomic_number_cosine_cluster','g2vec_degree_euclidean_cluster','g2vec_degree_cosine_cluster','fgsd_degree_euclidean_cluster','fgsd_degree_cosine_cluster']
 
 FIGURE_NAME_TEMPLATE: str = '{}_{}.html'
 
@@ -97,12 +98,22 @@ def update():
         test = factor_cmap(field_name='label',
                            palette=Category20[17],
                            factors=sorted(df['most_prevalent_atomic_group'].unique()))
-    else:
+    elif color == 'space_group':
         color_bar.visible = False
         test = factor_cmap(field_name='label',
                            palette=Category10[7],
                            factors=sorted(df['space_group'].unique()))
-
+    else:
+        p.legend.visible = False
+        low = min(df[color])
+        high = max(df[color])
+        test = linear_cmap(field_name='label',
+                           palette=Viridis256,
+                           low=low,
+                           high=high)
+        mapper['transform'].low = low
+        mapper['transform'].high = high
+    # print(len(df[color].unique()))
     scatter.glyph.fill_color = test
     source.data = dict(
         x=df[X_AXIS_TEMPLATE.format(embedding, metric, neighbor)],
@@ -115,7 +126,7 @@ def update():
         atomic_group=df['most_prevalent_atomic_group']
     )
 
-    if color == 'formation_energy':
+    if color == 'formation_energy' or color.endswith('cluster'):
         color_bar.visible = True
     else:
         p.legend.visible = True
